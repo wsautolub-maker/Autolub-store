@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Smart Store Manager</title>
+  <link rel="manifest" href="manifest.json">
+  <!-- Library สำหรับสแกน QR / Barcode ผ่านกล้อง -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  
+  <style>
+    :root {
+      --primary: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-sub: #64748b;
+      --border: #e2e8f0;
+    }
+
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); margin: 0; padding: 12px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 500px; }
+
+    /* Header Bar */
+    .header {
+      background: #0f172a;
+      color: white;
+      padding: 14px 18px;
+      border-radius: 16px 16px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .status-pill {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .status-online { background: #dcfce7; color: #156534; }
+    .status-offline { background: #fee2e2; color: #991b1b; }
+
+    .main-card {
+      background: var(--card-bg);
+      padding: 16px;
+      border-radius: 0 0 16px 16px;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+      margin-bottom: 16px;
+    }
+
+    /* Mode Tabs (IN / OUT / AUDIT) */
+    .mode-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: 2px solid var(--border);
+      background: #fff;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active.in { background: #d1fae5; color: #047857; border-color: #10b981; }
+    .tab-btn.active.out { background: #fee2e2; color: #b91c1c; border-color: #ef4444; }
+    .tab-btn.active.audit { background: #fef3c7; color: #b45309; border-color: #f59e0b; }
+
+    /* 📸 ส่วนแสดงผลกล้องสแกน (กำหนดขนาดขั้นต่ำเพื่อกันช่องยุบ) */
+    .scanner-wrapper {
+      position: relative;
+      width: 100%;
+      min-height: 260px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      border: 2px dashed #94a3b8;
+    }
+    #reader { width: 100%; height: 100%; }
+    .camera-placeholder {
+      color: #94a3b8;
+      font-size: 14px;
+      text-align: center;
+      position: absolute;
+      pointer-events: none;
+    }
+
+    /* Camera Toolbar Overlay */
+    .camera-toolbar {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .tool-btn {
+      padding: 8px 14px;
+      background: #e2e8f0;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tool-btn:active { background: #cbd5e1; }
+
+    /* Toggle Auto Save Switch */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f1f5f9;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .3s; border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background-color: white; transition: .3s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: var(--primary); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    /* Input Forms */
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--text-sub); margin-bottom: 4px; }
+    .input-box {
+      width: 100%;
+      padding: 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      font-size: 15px;
+      outline: none;
+    }
+    .input-box:focus { border-color: var(--primary); }
+
+    /* Quick Qty Buttons */
+    .qty-container { display: flex; gap: 8px; align-items: center; }
+    .quick-qty-btn {
+      padding: 10px 14px;
+      background: #e2e8f0;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* Primary Action Buttons */
+    .btn-action {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+      margin-top: 6px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    .btn-save { background: var(--primary); }
+    .btn-sync { background: var(--success); margin-top: 8px; display: none; }
+
+    /* History Table */
+    .history-card {
+      background: white;
+      padding: 16px;
+      border-radius: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+    .history-card h3 { margin: 0 0 12px 0; font-size: 15px; color: var(--text); display: flex; justify-content: space-between; }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .badge-tag {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <h1>📦 Smart Store Manager</h1>
+    <span id="networkStatus" class="status-pill status-online">Online</span>
+  </div>
+
+  <div class="main-card">
+    <!-- Mode Selection Tabs -->
+    <div class="mode-tabs">
+      <button id="tabIn" class="tab-btn active in" onclick="setActionMode('IN')">📥 รับเข้า (+)</button>
+      <button id="tabOut" class="tab-btn out" onclick="setActionMode('OUT')">📤 เบิกจ่าย (-)</button>
+      <button id="tabAudit" class="tab-btn audit" onclick="setActionMode('AUDIT')">🔍 ตรวจนับ</button>
+    </div>
+
+    <!-- 📷 ช่องแสดงผลภาพจากกล้องสแกน -->
+    <div class="scanner-wrapper">
+      <div class="camera-placeholder" id="camPlaceholder">📷 กำลังขอสิทธิ์เปิดกล้อง...</div>
+      <div id="reader"></div>
+    </div>
+
+    <!-- Camera Control Toolbar -->
+    <div class="camera-toolbar">
+      <button class="tool-btn" onclick="toggleTorch()">🔦 ไฟฉาย</button>
+      <button class="tool-btn" onclick="switchCamera()">🔄 สลับกล้อง</button>
+      <button class="tool-btn" onclick="toggleScannerPause()">⏯️ พัก/เล่นกล้อง</button>
+    </div>
+
+    <!-- Auto-Scan Toggle Switch -->
+    <div class="toggle-row">
+      <span>⚡ สแกนครั้งเดียวบันทึกทันที (Auto-Save)</span>
+      <label class="switch">
+        <input type="checkbox" id="autoSaveToggle" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <!-- Input Form -->
+    <div class="form-group">
+      <label>รหัสบาร์โค้ด / QR Code:</label>
+      <input type="text" id="barcodeInput" class="input-box" placeholder="ยิงกล้องหรือพิมพ์รหัสสินค้าที่นี่">
+    </div>
+
+    <div class="form-group">
+      <label>จำนวน:</label>
+      <div class="qty-container">
+        <input type="number" id="qtyInput" class="input-box" value="1" min="1" style="text-align: center;">
+        <button class="quick-qty-btn" onclick="addQty(1)">+1</button>
+        <button class="quick-qty-btn" onclick="addQty(5)">+5</button>
+        <button class="quick-qty-btn" onclick="addQty(10)">+10</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>ตำแหน่งชั้นวาง (Bin/Rack/Shelf):</label>
+      <input type="text" id="locationInput" class="input-box" value="A-01-01" placeholder="เช่น A-01-01">
+    </div>
+
+    <!-- Save & Offline Sync Buttons -->
+    <button id="saveBtn" class="btn-action btn-save" onclick="handleManualSave()">💾 บันทึกลง Google Sheets</button>
+    <button id="syncBtn" class="btn-action btn-sync" onclick="syncOfflineQueue()">🔄 ซิงค์ข้อมูลค้างส่ง (<span id="queueCount">0</span>)</button>
+  </div>
+
+  <!-- Recent Scan History -->
+  <div class="history-card">
+    <h3>รายการสแกนล่าสุดในเซสชันนี้ <span style="font-size: 11px; font-weight: normal; color: var(--text-sub);">เรียงจากล่าสุด</span></h3>
+    <div id="historyList">
+      <div style="text-align: center; color: var(--text-sub); font-size: 13px; padding: 10px;">ยังไม่มีรายการสแกน</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let html5QrCode = null;
+  let currentAction = 'IN';
+  let isTorchOn = false;
+  let currentCameraId = null;
+  let camerasList = [];
+  let isPaused = false;
+  let lastScannedCode = "";
+  let lastScannedTime = 0;
+
+  document.addEventListener("DOMContentLoaded", () => {
+    initScanner();
+    updateNetworkStatus();
+    window.addEventListener('online', updateNetworkStatus);
+    window.addEventListener('offline', updateNetworkStatus);
+  });
+
+  // 1. ระบบจัดการกล้อง (Camera Controller)
+  async function initScanner() {
+    html5QrCode = new Html5Qrcode("reader");
+    const placeholder = document.getElementById("camPlaceholder");
+    
+    try {
+      camerasList = await Html5Qrcode.getCameras();
+      if (camerasList && camerasList.length > 0) {
+        // เลือกกล้องหลังเป็นหลัก
+        currentCameraId = camerasList[camerasList.length - 1].id;
+        startCamera(currentCameraId);
+      } else {
+        placeholder.innerText = "❌ ไม่พบกล้องบนอุปกรณ์นี้";
+      }
+    } catch (err) {
+      console.error("Camera Error:", err);
+      placeholder.innerText = "⚠️ กรุณากด 'อนุญาต' ให้แอปใช้กล้องถ่ายรูป";
+    }
+  }
+
+  function startCamera(cameraId) {
+    const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+    html5QrCode.start(cameraId, config, onScanSuccess)
+      .then(() => {
+        document.getElementById("camPlaceholder").style.display = "none";
+      })
+      .catch(err => {
+        console.error(err);
+        document.getElementById("camPlaceholder").innerText = "⚠️ ไม่สามารถเปิดกล้องได้";
+      });
+  }
+
+  async function switchCamera() {
+    if (camerasList.length < 2) {
+      alert("อุปกรณ์นี้มีกล้องเพียงตัวเดียว");
+      return;
+    }
+    await html5QrCode.stop();
+    document.getElementById("camPlaceholder").style.display = "block";
+    document.getElementById("camPlaceholder").innerText = "🔄 กำลังสลับกล้อง...";
+    currentCameraId = (currentCameraId === camerasList[0].id) ? camerasList[camerasList.length - 1].id : camerasList[0].id;
+    startCamera(currentCameraId);
+  }
+
+  function toggleTorch() {
+    if (!html5QrCode) return;
+    isTorchOn = !isTorchOn;
+    html5QrCode.applyVideoConstraints({ advanced: [{ torch: isTorchOn }] })
+      .catch(() => alert("อุปกรณ์หรือเบราว์เซอร์ไม่รองรับการเปิดไฟฉาย"));
+  }
+
+  function toggleScannerPause() {
+    if (!html5QrCode) return;
+    if (isPaused) {
+      html5QrCode.resume();
+      isPaused = false;
+    } else {
+      html5QrCode.pause();
+      isPaused = true;
+    }
+  }
+
+  // 2. การจัดการโหมด IN / OUT / AUDIT
+  function setActionMode(mode) {
+    currentAction = mode;
+    document.getElementById("tabIn").className = "tab-btn " + (mode === 'IN' ? 'active in' : '');
+    document.getElementById("tabOut").className = "tab-btn " + (mode === 'OUT' ? 'active out' : '');
+    document.getElementById("tabAudit").className = "tab-btn " + (mode === 'AUDIT' ? 'active audit' : '');
+  }
+
+  function addQty(num) {
+    const input = document.getElementById("qtyInput");
+    input.value = (parseInt(input.value) || 0) + num;
+  }
+
+  // 3. Callback เมื่อกล้องสแกนเจอ QR / Barcode
+  function onScanSuccess(decodedText) {
+    const barcode = String(decodedText).trim();
+    const now = Date.now();
+
+    // Cooldown ป้องกันสแกนซ้ำภายใน 2.5 วินาที
+    if (barcode === lastScannedCode && (now - lastScannedTime) < 2500) return;
+    
+    lastScannedCode = barcode;
+    lastScannedTime = now;
+
+    playBeep();
+    if (navigator.vibrate) navigator.vibrate(100);
+
+    document.getElementById("barcodeInput").value = barcode;
+
+    const autoSave = document.getElementById("autoSaveToggle").checked;
+    if (autoSave) {
+      handleManualSave(); // Auto Save เมื่อสแกน
+    }
+  }
+
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.connect(ctx.destination);
+      osc.frequency.value = 850;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.12);
+    } catch(e){}
+  }
+
+  // 4. บันทึกข้อมูล
+  function handleManualSave() {
+    const barcode = document.getElementById("barcodeInput").value.trim();
+    const qty = parseInt(document.getElementById("qtyInput").value, 10) || 1;
+    const location = document.getElementById("locationInput").value.trim() || "SHELF";
+
+    if (!barcode) {
+      alert("กรุณาระบุรหัสสินค้าก่อนบันทึก");
+      return;
+    }
+
+    const payload = {
+      timestamp: new Date().toISOString(),
+      barcode: barcode,
+      action: currentAction,
+      quantity: qty,
+      location: location,
+      userId: "OPERATOR"
+    };
+
+    if (typeof processScanData === "function") {
+      processScanData(payload);
+    }
+
+    addHistoryUI(barcode, currentAction, qty, location);
+  }
+
+  function addHistoryUI(barcode, action, qty, location) {
+    const historyList = document.getElementById("historyList");
+    if (historyList.innerHTML.includes("ยังไม่มีรายการสแกน")) historyList.innerHTML = "";
+
+    const timeStr = new Date().toLocaleTimeString('th-TH');
+    let badgeClass = action === 'IN' ? 'background:#d1fae5; color:#047857;' : 
+                     action === 'OUT' ? 'background:#fee2e2; color:#b91c1c;' : 'background:#fef3c7; color:#b45309;';
+    
+    const html = `
+      <div class="history-item">
+        <div>
+          <strong>${barcode}</strong> <span style="color:var(--text-sub);">(${location})</span>
+          <div style="font-size:11px; color:var(--text-sub);">${timeStr}</div>
+        </div>
+        <div>
+          <span class="badge-tag" style="${badgeClass}">${action}: ${qty}</span>
+        </div>
+      </div>
+    `;
+    historyList.insertAdjacentHTML('afterbegin', html);
+  }
+
+  function updateNetworkStatus() {
+    const statusPill = document.getElementById("networkStatus");
+    if (navigator.onLine) {
+      statusPill.innerText = "Online";
+      statusPill.className = "status-pill status-online";
+    } else {
+      statusPill.innerText = "Offline";
+      statusPill.className = "status-pill status-offline";
+    }
+  }
+</script>
+
+<!-- ดึงสคริปต์หลักสำหรับการรับ-ส่งข้อมูลกับ Google Apps Script -->
+<script src="app.js"></script>
+</body>
+</html>
